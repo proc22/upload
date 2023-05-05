@@ -1,26 +1,27 @@
 import streamlit as st
-import pandas as pd
-import gspread
 from google.oauth2 import service_account
-
-st.title("Project")
+from gsheetsdb import connect
 
 # Create a connection object.
 credentials = service_account.Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
     scopes=[
-        "https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive"
+        "https://www.googleapis.com/auth/spreadsheets",
     ],
 )
 conn = connect(credentials=credentials)
-client=gspread.authorize(credentials)
 
-sheet_id = '1QL1kko61BAlu6soW7GM9rVgQk-w1N1O_w4jxivVUf_c'
-csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-database_df = pd.read_csv(csv_url, on_bad_lines='skip')
+# Perform SQL query on the Google Sheet.
+# Uses st.cache_data to only rerun when the query changes or after 10 min.
+@st.cache_data(ttl=600)
+def run_query(query):
+    rows = conn.execute(query, headers=1)
+    rows = rows.fetchall()
+    return rows
 
-database_df = database_df.astype(str)
-sheet_url = st.secrets["private_gsheets_url"] #this information should be included in streamlit secret
-sheet = client.open_by_url(sheet_url).sheet1
-sheet.update([database_df.columns.values.tolist()] + database_df.values.tolist())
-st.success('Data has been written to Google Sheets')
+sheet_url = st.secrets["private_gsheets_url"]
+rows = run_query(f'SELECT * FROM "{sheet_url}"')
+
+# Print results.
+for row in rows:
+    st.write(f"{row.name} has a :{row.pet}:")
